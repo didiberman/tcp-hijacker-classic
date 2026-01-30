@@ -1,8 +1,8 @@
 # TCP Hijacker Classic
 
-🔥 A reconstruction of a legendary tool built by a 12-year-old hacker — this program lets you disrupt or hijack TCP connections using raw sockets and handcrafted SEQ/ACK spoofing.
+🔥 A reconstruction of a legendary tool i built as a 12-year-old — this program lets you disrupt or hijack TCP connections using raw sockets and handcrafted SEQ/ACK spoofing.
 
-> 🛑 For **educational use only**. Unauthorized network access is illegal.
+> 🛑 For **educational use only**. Unauthorized network access is illegal. Proof of contept for Security purposes
 
 ---
 
